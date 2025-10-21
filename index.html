@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>32-hour clock</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="https://res.cloudinary.com/dk0f2y0hu/image/upload/v1761065042/Group_2_xkhwm7.png">
+  <style>
+    :root {
+      --bg-light: #ffffff;
+      --bg-dark: #0f0f10;
+      --text-light: #000000;
+      --text-dark: #ffffff;
+      --green: #3bb273;
+      --red: #d33f49;
+      --orange: #b36b00;
+      --border-light: rgba(0,0,0,0.18);
+      --border-dark: rgba(255,255,255,0.28);
+    }
+
+    * {box-sizing: border-box; margin:0; padding:0; font-family: 'Inter', sans-serif;}
+    html,body{height:100%;}
+
+    /* theme classes */
+    :root.light { --bg: var(--bg-light); --fg: var(--text-light); --btn-border: var(--border-light); }
+    :root.dark  { --bg: var(--bg-dark);  --fg: var(--text-dark);  --btn-border: var(--border-dark); }
+
+    body.light, body.dark{
+      height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background-color:var(--bg);
+      color:var(--fg);
+      transition: background-color .25s ease, color .25s ease;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      padding: env(safe-area-inset-top) 18px 18px 18px;
+    }
+
+    /* clock: plain, no gradient/blur around it */
+    .clock{
+      font-weight:800;
+      font-size:clamp(44px,14vw,140px);
+      line-height:1;
+      text-align:center;
+      padding:6px 2px;
+      border-radius:6px;
+      min-width:200px;
+      background: transparent; /* removed gradient/blur */
+    }
+
+    .settings-btn{
+      position:fixed;
+      top:14px;
+      right:14px;
+      width:48px;
+      height:48px;
+      border-radius:50%;
+      border:1px solid var(--btn-border);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:transparent;
+      cursor:pointer;
+      transition:transform .18s ease, border-color .18s ease;
+    }
+    .settings-btn:active{ transform: scale(.98); }
+
+    .settings-panel{
+      position:fixed;
+      left:50%;
+      transform:translateX(-50%) translateY(18px);
+      bottom:16px;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:center;
+      pointer-events:none;
+      opacity:0;
+      transition:opacity .22s ease, transform .22s ease;
+      flex-wrap:wrap;
+      width:min(94%,980px);
+    }
+    .settings-panel.active{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
+
+    .btn, .sync-label{
+      border:1px solid var(--btn-border);
+      background:transparent;
+      color:var(--fg);
+      padding:10px 14px;
+      border-radius:10px;
+      font-weight:700;
+      cursor:pointer;
+      min-width:120px;
+      text-align:center;
+      transition: transform .12s ease, background .12s ease, border-color .12s ease;
+      font-size:15px; /* unified font-size */
+      line-height:1;
+    }
+    .btn:active{ transform:scale(.98); }
+
+    .sync-label{ color:#fff; border:1px solid transparent; }
+    .sync-unknown{ background:var(--orange); }
+    .sync-ok{ background:var(--green); }
+    .sync-bad{ background:var(--red); }
+
+    @media (max-width:520px){
+      .settings-btn{width:44px;height:44px}
+      .btn{min-width:100px;padding:8px 10px}
+      .clock{font-size:clamp(32px,20vw,90px);padding:6px 4px}
+    }
+      .btn{min-width:100px;padding:8px 10px}
+      .clock{font-size:clamp(32px,20vw,90px);padding:6px 4px}
+    }
+
+    /* icons styling */
+    svg { display:block; }
+  </style>
+</head>
+<body class="light">
+  <main>
+    <div class="clock" id="clock">--:--:--</div>
+  </main>
+
+  <button id="settingsBtn" class="settings-btn" aria-label="settings" title="settings">
+    <!-- three dots icon -->
+    <svg id="iconDots" width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <circle cx="5" cy="12" r="1.5" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+      <circle cx="19" cy="12" r="1.5" fill="currentColor" />
+    </svg>
+    <svg id="iconClose" width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden style="display:none;">
+      <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <div id="settingsPanel" class="settings-panel" aria-hidden="true">
+    <button id="toggleReal" class="btn">24h</button>
+    <button id="toggleTheme" class="btn">tema scuro</button>
+    <button id="toggleLang" class="btn">english</button>
+    <div id="syncStatus" class="sync-label sync-unknown" role="button" tabindex="0">non sincronizzato</div>
+  </div>
+
+  <script>
+    const clockEl = document.getElementById('clock');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const iconDots = document.getElementById('iconDots');
+    const iconClose = document.getElementById('iconClose');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const toggleReal = document.getElementById('toggleReal');
+    const toggleTheme = document.getElementById('toggleTheme');
+    const toggleLang = document.getElementById('toggleLang');
+    const syncStatus = document.getElementById('syncStatus');
+
+    let lang = 'it';
+    let showReal = false; // false -> showing 32h by default
+    let everSynced = false;
+    let offsetMs = 0;
+    let syncState = 'bad';
+    let theme = 'light';
+
+    const STR = {
+      it: { showRealLabel: '24h', show32Label: '32h', darkTheme: 'tema scuro', lightTheme: 'tema chiaro', langBtn: 'english', syncYes: 'sincronizzato', syncNo: 'non sincronizzato', syncPending: 'sincronizzazione...' },
+      en: { showRealLabel: '24h', show32Label: '32h', darkTheme: 'dark theme', lightTheme: 'light theme', langBtn: 'italiano', syncYes: 'synchronized', syncNo: 'not synchronized', syncPending: 'syncing...' }
+    };
+
+    function pad(n){ return n.toString().padStart(2,'0'); }
+
+    function applyTheme(t){ theme = t; document.documentElement.classList.remove('light','dark'); document.documentElement.classList.add(t); document.body.className = t; updateTexts(); }
+    applyTheme('light');
+
+    const PSEUDO = 45*60;
+    function nowAdjusted(){ return everSynced ? new Date(Date.now() + offsetMs) : new Date(); }
+    function to32(date){ const local = new Date(date.getTime()); const sec = local.getHours()*3600 + local.getMinutes()*60 + local.getSeconds(); const ph = Math.floor(sec / PSEUDO) % 32; const rem = sec % PSEUDO; const pm = Math.floor((rem / PSEUDO)*60); const ps = Math.floor(((rem / PSEUDO)*60 - pm)*60); return {h:ph,m:pm,s:ps}; }
+    function format32(o){ return `${o.h}:${pad(o.m)}:${pad(o.s)}`; }
+    function formatReal(d){ return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
+
+    function render(){ const d = nowAdjusted(); clockEl.textContent = showReal ? formatReal(d) : format32(to32(d)); }
+    render(); setInterval(render, 200);
+
+    // sync
+    const SERVER = 'https://worldtimeapi.org/api/timezone/Europe/Rome';
+    async function fetchServer(timeout=30000){ const ctr = new AbortController(); const id = setTimeout(()=>ctr.abort(), timeout); try{ const res = await fetch(SERVER,{signal:ctr.signal}); clearTimeout(id); if(!res.ok) throw new Error('http '+res.status); const json = await res.json(); return {ok:true,json}; }catch(err){ clearTimeout(id); return {ok:false,error: err && err.name ? err.name : String(err)}; } }
+
+    async function applySync(force=false){ setSyncState('pending'); const r = await fetchServer(30000); if(r.ok){ const json = r.json; const serverMs = json.unixtime ? json.unixtime*1000 : Date.parse(json.utc_datetime); const localNow = Date.now(); const totalOffset = (serverMs + (json.raw_offset||0)*1000 + (json.dst_offset||0)*1000) - localNow; offsetMs = totalOffset; everSynced = true; setSyncState('ok'); console.info('sync ok offset', offsetMs); } else { console.warn('sync failed', r.error); if(!everSynced || force){ setSyncState('bad'); } else { setSyncState('ok'); } } }
+
+    function setSyncState(s){ syncState = s; syncStatus.classList.remove('sync-unknown','sync-ok','sync-bad'); if(s==='pending'){ syncStatus.textContent = STR[lang].syncPending; syncStatus.classList.add('sync-unknown'); } else if(s==='ok'){ syncStatus.textContent = STR[lang].syncYes; syncStatus.classList.add('sync-ok'); } else { syncStatus.textContent = STR[lang].syncNo; syncStatus.classList.add('sync-bad'); } }
+
+    (async ()=>{ setSyncState('pending'); await applySync(false); })();
+    setInterval(()=>{ applySync(false); }, 15*60*1000);
+
+    // UI
+    function updateTexts(){
+      // theme button shows action (what it will switch to)
+      toggleTheme.textContent = theme === 'light' ? STR[lang].darkTheme : STR[lang].lightTheme;
+      // real/32 toggle shows target mode label
+      toggleReal.textContent = showReal ? STR[lang].show32Label : STR[lang].showRealLabel;
+      // lang button
+      toggleLang.textContent = STR[lang].langBtn;
+      // sync label already set by setSyncState
+      // ensure sync label font-size matches buttons (CSS handles it)
+    }
+    updateTexts();
+
+    settingsBtn.addEventListener('click', ()=>{
+      const active = settingsPanel.classList.toggle('active');
+      iconDots.style.display = active ? 'none' : 'block';
+      iconClose.style.display = active ? 'block' : 'none';
+      settingsPanel.setAttribute('aria-hidden', active ? 'false' : 'true');
+    });
+
+    toggleReal.addEventListener('click', ()=>{ showReal = !showReal; updateTexts(); render(); });
+    toggleTheme.addEventListener('click', ()=>{ const next = theme === 'light' ? 'dark' : 'light'; applyTheme(next); });
+    toggleLang.addEventListener('click', ()=>{ lang = lang === 'it' ? 'en' : 'it'; updateTexts(); setSyncState(syncState); });
+
+    syncStatus.addEventListener('click', async ()=>{ setSyncState('pending'); await applySync(true); });
+    syncStatus.addEventListener('keydown', async (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); setSyncState('pending'); await applySync(true); } });
+
+    // accessibility: close panel with Escape
+    window.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && settingsPanel.classList.contains('active')){ settingsPanel.classList.remove('active'); iconDots.style.display='block'; iconClose.style.display='none'; settingsPanel.setAttribute('aria-hidden','true'); } });
+
+    // note: service worker registration intentionally removed for sandbox compatibility
+  </script>
+</body>
+</html>
